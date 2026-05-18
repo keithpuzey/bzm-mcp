@@ -13,6 +13,20 @@ test('Benchmark homepage performance', async ({ page, performanceTracker }) => {
   // 3. Stop the tracker and get your structured data back
   const metrics = await performanceTracker.stop();
 
+import { test, expect } from './performance-fixture';
+
+test('Verify Landing Page Performance', async ({ page, performanceTracker }, testInfo) => {
+  await performanceTracker.start();
+
+  await page.goto('https://example.com');
+  await page.waitForLoadState('networkidle');
+
+  // Pass testInfo context so the CSV logging engine tracks the exact test title automatically
+  await performanceTracker.stop(testInfo);
+});
+
+
+
   // 4. Print or Save the results (can be pushed to Datadog, InfluxDB, etc.)
   console.log('Test Metrics Summary:', JSON.stringify(metrics, null, 2));
 
