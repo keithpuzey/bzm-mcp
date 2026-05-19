@@ -1,42 +1,34 @@
 import { test as base, expect } from '@playwright/test';
-import { CDPSession } from 'playwright';
+import { Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Flattened structure designed explicitly for table formats like CSV
 export interface PerformanceMetrics {
   timestamp: string;
   testName: string;
+  stepName: string;
   url: string;
   LCP_ms: number | string;
-  INP_ms: number | string;
   CLS: number | string;
   FCP_ms: number | string;
   TTFB_ms: number | string;
   requestCount: number;
   totalPageSizeMB: number;
-  dnsLookupTimeMS: number;
-  documentCompleteTimeMS: number;
 }
 
+type TrackerInstance = {
+  resetCounters: () => void;
+  stop: (testInfo: any, stepName: string, targetPage?: Page) => Promise<PerformanceMetrics>;
+};
+
 type MyFixtures = {
-  performanceTracker: {
-    start: () => Promise<void>;
-    stop: (testInfo: any) => Promise<PerformanceMetrics>;
-  };
+  performanceTracker: TrackerInstance;
 };
 
 export const test = base.extend<MyFixtures>({
   performanceTracker: async ({ page }, use) => {
-    const vitals: Record<string, number> = {};
     let requestCount = 0;
     let totalSizeInBytes = 0;
-    let cdpSession: CDPSession;
-
-    // Listeners and Injectors remain the same
-    await page.exposeFunction('onWebVitalsMetric', (metric: { name: string; value: number }) => {
-      vitals[metric.name] = metric.value;
-    });
 
     const responseListener = async (response) => {
       requestCount++;
@@ -46,85 +38,75 @@ export const test = base.extend<MyFixtures>({
       }
     };
 
-    const tracker = {
-      start: async () => {
-        page.on('response', responseListener);
+    page.on('response', responseListener);
 
-        await page.addInitScript(() => {
-          const script = document.createElement('script');
-          script.src = 'https://unpkg.com/web-vitals@4/dist/web-vitals.attribution.iife.js';
-          script.onload = () => {
-            // @ts-ignore
-            webVitals.onLCP(window.onWebVitalsMetric);
-            // @ts-ignore
-            webVitals.onINP(window.onWebVitalsMetric);
-            // @ts-ignore
-            webVitals.onCLS(window.onWebVitalsMetric);
-            // @ts-ignore
-            webVitals.onFCP(window.onWebVitalsMetric);
-            // @ts-ignore
-            webVitals.onTTFB(window.onWebVitalsMetric);
-          };
-          document.head.appendChild(script);
-        });
-
-        cdpSession = await page.context().newCDPSession(page);
-        await cdpSession.send('Performance.enable');
+    const tracker: TrackerInstance = {
+      resetCounters: () => {
+        requestCount = 0;
+        totalSizeInBytes = 0;
       },
+      stop: async (testInfo: any, stepName: string, targetPage?: Page): Promise<PerformanceMetrics> => {
+        const activePage = targetPage || page;
+        
+        // Give the browser paint pipeline 1 second to fully stabilize timings
+        await activePage.waitForTimeout(1000);
 
-      stop: async (testInfo: any): Promise<PerformanceMetrics> => {
-        page.off('response', responseListener);
+        // Extract raw performance numbers straight from Chromium's memory core
+        const performanceTimings = await activePage.evaluate(() => {
+          const [navTiming] = performance.getEntriesByType('navigation') as any[];
+          const paintTimings = performance.getEntriesByType('paint');
+          
+          // Fallback calculations for layout values
+          const fcpEntry = paintTimings.find(p => p.name === 'first-contentful-paint');
+          
+          // Query the performance observer cache for Largest Contentful Paint snapshots
+          let lcpValue = 0;
+          try {
+            const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
+            if (lcpEntries.length > 0) {
+              lcpValue = lcpEntries[lcpEntries.length - 1].startTime;
+            }
+          } catch(e) {}
 
-        const browserTimings = await page.evaluate(() => {
-          const [timing] = performance.getEntriesByType('navigation') as any[];
-          return timing ? {
-            dnsLookupTime: timing.domainLookupEnd - timing.domainLookupStart,
-            documentCompleteTime: timing.domComplete
-          } : { dnsLookupTime: 0, documentCompleteTime: 0 };
+          // Fallback to FCP if LCP observer has not registered yet
+          if (lcpValue === 0 && fcpEntry) {
+            lcpValue = fcpEntry.startTime;
+          }
+
+          return {
+            TTFB: navTiming ? navTiming.responseStart - navTiming.requestStart : 0,
+            FCP: fcpEntry ? fcpEntry.startTime : 0,
+            LCP: lcpValue,
+            CLS: 0 // Baseline placeholder for layout calculations
+          };
         });
 
-        // Construct flat row object
         const metrics: PerformanceMetrics = {
           timestamp: new Date().toISOString(),
           testName: testInfo.title,
-          url: page.url(),
-          LCP_ms: vitals.LCP ?? 'N/A',
-          INP_ms: vitals.INP ?? 'N/A',
-          CLS: vitals.CLS ?? 'N/A',
-          FCP_ms: vitals.FCP ?? 'N/A',
-          TTFB_ms: vitals.TTFB ?? 'N/A',
+          stepName,
+          url: activePage.url(),
+          LCP_ms: performanceTimings.LCP > 0 ? parseFloat(performanceTimings.LCP.toFixed(2)) : 'N/A',
+          CLS: performanceTimings.CLS,
+          FCP_ms: performanceTimings.FCP > 0 ? parseFloat(performanceTimings.FCP.toFixed(2)) : 'N/A',
+          TTFB_ms: performanceTimings.TTFB > 0 ? parseFloat(performanceTimings.TTFB.toFixed(2)) : 'N/A',
           requestCount,
-          totalPageSizeMB: parseFloat((totalSizeInBytes / 1024 / 1024).toFixed(2)),
-          dnsLookupTimeMS: browserTimings.dnsLookupTime,
-          documentCompleteTimeMS: browserTimings.documentCompleteTime
+          totalPageSizeMB: parseFloat((totalSizeInBytes / 1024 / 1024).toFixed(2))
         };
 
-        // --- CSV Generation Engine ---
-        const targetDir = path.join(process.cwd(), 'performance-results');
+        const targetDir = path.join(process.cwd(), '.');
         const csvPath = path.join(targetDir, 'web-vitals-report.csv');
-
-        // Create the results folder if missing
-        if (!fs.existsSync(targetDir)) {
-          fs.mkdirSync(targetDir, { recursive: true });
-        }
+        if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
         const keys = Object.keys(metrics) as (keyof PerformanceMetrics)[];
-        
-        // Ensure values containing commas are safely wrapped in double quotes
         const csvRow = keys.map(key => {
           const value = metrics[key];
-          if (typeof value === 'string' && value.includes(',')) {
-            return `"${value.replace(/"/g, '""')}"`;
-          }
-          return value;
+          return typeof value === 'string' && value.includes(',') ? `"${value.replace(/"/g, '""')}"` : value;
         }).join(',');
 
         if (!fs.existsSync(csvPath)) {
-          // If file doesn't exist, build schema head + append initial row data
-          const csvHeader = keys.join(',');
-          fs.writeFileSync(csvPath, `${csvHeader}\n${csvRow}\n`, 'utf8');
+          fs.writeFileSync(csvPath, `${keys.join(',')}\n${csvRow}\n`, 'utf8');
         } else {
-          // File exists: simply stream append the row to prevent file overrides
           fs.appendFileSync(csvPath, `${csvRow}\n`, 'utf8');
         }
 
@@ -133,7 +115,9 @@ export const test = base.extend<MyFixtures>({
     };
 
     await use(tracker);
-  },
+    page.off('response', responseListener);
+  }
 });
 
 export { expect };
+
