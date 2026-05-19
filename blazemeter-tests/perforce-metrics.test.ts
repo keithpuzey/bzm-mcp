@@ -6,6 +6,7 @@ test('Benchmark Perforce Multi-Page User Journey', async ({ page, performanceTra
 
   // --- PAGE 1: Landing on Main Perforce site ---
   performanceTracker.resetCounters();
+  await performanceTracker.startMetricsCollection(page); // Always initialize collection before navigation!
   await page.goto('https://perforce.com');
   
   try {
@@ -17,6 +18,7 @@ test('Benchmark Perforce Multi-Page User Journey', async ({ page, performanceTra
 
   // --- PAGE 2: Browse Products ---
   performanceTracker.resetCounters();
+  await performanceTracker.startMetricsCollection(page);
   await page.getByRole('link', { name: 'Browse Products' }).click();
   await page.waitForLoadState('load');
   
@@ -24,6 +26,7 @@ test('Benchmark Perforce Multi-Page User Journey', async ({ page, performanceTra
 
   // --- PAGE 3: Digital IP Management ---
   performanceTracker.resetCounters();
+  await performanceTracker.startMetricsCollection(page);
   await page.getByRole('link', { name: 'Digital IP Management and' }).click();
   await page.waitForLoadState('load');
   
@@ -31,6 +34,7 @@ test('Benchmark Perforce Multi-Page User Journey', async ({ page, performanceTra
 
   // --- PAGE 4: Explore IPLM ---
   performanceTracker.resetCounters();
+  await performanceTracker.startMetricsCollection(page);
   await page.getByRole('link', { name: 'Explore IPLM' }).click();
   await page.waitForLoadState('load');
   
@@ -38,6 +42,7 @@ test('Benchmark Perforce Multi-Page User Journey', async ({ page, performanceTra
 
   // --- PAGE 5: What’s New ---
   performanceTracker.resetCounters();
+  await performanceTracker.startMetricsCollection(page);
   await page.getByRole('link', { name: 'What’s New' }).click();
   await page.waitForLoadState('load');
   
@@ -51,19 +56,17 @@ test('Benchmark Perforce Multi-Page User Journey', async ({ page, performanceTra
 
   await page1.bringToFront();
   
-  // Navigate explicitly on the popup instance to fill out the paint arrays
+  // Initialize metric collectors on the brand new popup page reference context
+  await performanceTracker.startMetricsCollection(page1);
+  
   const popupUrl = page1.url();
   await page1.goto(popupUrl);
   await page1.waitForLoadState('load');
 
-  // Scroll to finalize metrics reporting profiles
+  // Interaction triggers the Interaction to Next Paint (INP) evaluation timeline
   await page1.mouse.wheel(0, 500);
-
-  
-  // FIX: Extend the wait time on the popup window to let Chromium finish recording paint vitals
   await page1.waitForTimeout(2500); 
   
   metrics = await performanceTracker.stop(testInfo, 'Perforce Software Popup Tab', page1);
   console.log('Final Popup Metrics Summary:', JSON.stringify(metrics, null, 2));
 });
-

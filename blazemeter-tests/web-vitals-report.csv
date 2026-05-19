@@ -1,0 +1,7 @@
+timestamp,testName,stepName,url,LCP_ms,INP_ms,CLS,TTFB_ms,FCP_ms,TTI_ms,TBT_ms,documentCompleteTime_ms,pageLoadTime_ms,requestCount,totalPageSizeMB,dnsLookupTime_ms,FPS
+2026-05-19T12:23:36.160Z,Benchmark Perforce Multi-Page User Journey,Main Landing Page,https://www.perforce.com/,436,16,0.2879,45.2,436,1621.9,N/A,2766.1,2767.3,243,12.87,0,60
+2026-05-19T12:23:38.126Z,Benchmark Perforce Multi-Page User Journey,Browse Products,https://www.perforce.com/products,492,N/A,0.0086,138.4,492,487.3,N/A,810.5,810.5,135,3.38,0,60
+2026-05-19T12:23:39.183Z,Benchmark Perforce Multi-Page User Journey,Digital IP Management,https://www.perforce.com/products#p-20457,492,24,0.0086,138.4,492,487.3,N/A,810.5,810.5,21,0.2,0,60
+2026-05-19T12:23:40.953Z,Benchmark Perforce Multi-Page User Journey,Explore IPLM,https://www.perforce.com/products/helix-iplm,384,N/A,0.0902,140.7,384,406.7,N/A,712.7,713,165,3.26,0,60
+2026-05-19T12:23:42.711Z,Benchmark Perforce Multi-Page User Journey,What’s New,https://www.perforce.com/products/helix-iplm/whats-new,408,N/A,0.0078,141.8,408,408.5,N/A,710.7,710.9,131,2.62,0,60
+2026-05-19T12:23:47.564Z,Benchmark Perforce Multi-Page User Journey,Perforce Software Popup Tab,https://www.perforce.com/,68,N/A,0.3896,0.8,68,228.3,N/A,1184.3,1189.6,26,0.41,0,60
